@@ -3,11 +3,12 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { motion } from 'framer-motion';
 import { 
   Activity, Cpu, Satellite, Wifi, TrendingUp, AlertTriangle, Brain, RefreshCw,
-  Mail, Phone, MapPin, Users, FileText, CheckCircle, Send, CreditCard, UserCheck
+  Mail, FileText, Send, CreditCard, UserCheck, Eye, Download, Trash2,
+  Lock, LogIn, Image, CheckCircle, XCircle, Calendar
 } from 'lucide-react';
 import * as tf from '@tensorflow/tfjs';
 
-// ---------- Inline TensorFlow.js Model (same as before) ----------
+// ---------- TensorFlow.js Model ----------
 interface TrainingRun {
   id: string;
   timestamp: Date;
@@ -126,12 +127,42 @@ class RealMLModel {
 
 const mlModel = new RealMLModel();
 
+// ---------- Storage Keys ----------
+const STORAGE_KEYS = {
+  subscriptions: 'simora_subscriptions',
+  dataRequests: 'simora_data_requests',
+  contacts: 'simora_contacts',
+  users: 'simora_users',
+  gallery: 'simora_gallery',
+  instSubs: 'simora_inst_subs'
+};
+
+const saveToLocal = (key: string, data: any) => localStorage.setItem(key, JSON.stringify(data));
+const loadFromLocal = (key: string) => {
+  const raw = localStorage.getItem(key);
+  return raw ? JSON.parse(raw) : [];
+};
+
+const isExpired = (expiry: string) => new Date(expiry) < new Date();
+
 // ---------- Dashboard Component ----------
 const Dashboard = () => {
+  // Tabs
+  const [activeTab, setActiveTab] = useState('dashboard');
+
+  // Auth state
+  const [adminLoggedIn, setAdminLoggedIn] = useState(false);
+  const [userLoggedIn, setUserLoggedIn] = useState<{ id: string; name: string; email: string; expiry: string; mine: string } | null>(null);
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [showUserLogin, setShowUserLogin] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+
+  // ML state
   const [modelLoading, setModelLoading] = useState(true);
   const [modelReady, setModelReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'subscribe' | 'contact' | 'dataRequest'>('dashboard');
   const [selectedMine, setSelectedMine] = useState('Great Dyke - North Dam');
   const [riskPercent, setRiskPercent] = useState(50);
   const [riskHistory, setRiskHistory] = useState<{ time: string; risk: number }[]>([
@@ -166,6 +197,31 @@ const Dashboard = () => {
   const [requestData, setRequestData] = useState('');
   const [requestSuccess, setRequestSuccess] = useState('');
 
+  // Admin/Storage data
+  const [subscriptions, setSubscriptions] = useState<any[]>([]);
+  const [dataRequests, setDataRequests] = useState<any[]>([]);
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [galleryImages, setGalleryImages] = useState<any[]>([]);
+  const [instSubs, setInstSubs] = useState<any[]>([]);
+  const [newImageUrl, setNewImageUrl] = useState('');
+  const [newImageCaption, setNewImageCaption] = useState('');
+  const [instSubName, setInstSubName] = useState('');
+  const [instSubEmail, setInstSubEmail] = useState('');
+  const [instSubInst, setInstSubInst] = useState('');
+  const [instSubMessage, setInstSubMessage] = useState('');
+
+  // Load stored data
+  useEffect(() => {
+    setSubscriptions(loadFromLocal(STORAGE_KEYS.subscriptions));
+    setDataRequests(loadFromLocal(STORAGE_KEYS.dataRequests));
+    setContacts(loadFromLocal(STORAGE_KEYS.contacts));
+    setUsers(loadFromLocal(STORAGE_KEYS.users));
+    setGalleryImages(loadFromLocal(STORAGE_KEYS.gallery));
+    setInstSubs(loadFromLocal(STORAGE_KEYS.instSubs));
+  }, []);
+
+  // ML init and functions
   const refreshMetrics = () => {
     setModelAccuracy(mlModel.getCurrentAccuracy());
     const runs = mlModel.getTrainingRuns();
@@ -252,10 +308,14 @@ const Dashboard = () => {
     }, 800);
   };
 
-  // Form handlers (simulate backend)
+  // Form handlers (save to localStorage)
   const handleSubscribe = (e: React.FormEvent) => {
     e.preventDefault();
     if (!subEmail) return;
+    const newSub = { id: Date.now(), name: subName, email: subEmail, tier: subTier, date: new Date().toISOString() };
+    const updated = [...subscriptions, newSub];
+    setSubscriptions(updated);
+    saveToLocal(STORAGE_KEYS.subscriptions, updated);
     setSubMessage(`Subscription successful (${subTier} tier). Welcome ${subName || 'miner'}!`);
     setTimeout(() => setSubMessage(''), 3000);
     setSubEmail(''); setSubName('');
@@ -263,6 +323,10 @@ const Dashboard = () => {
 
   const handleContact = (e: React.FormEvent) => {
     e.preventDefault();
+    const newContact = { id: Date.now(), name: contactName, email: contactEmail, message: contactMsg, date: new Date().toISOString() };
+    const updated = [...contacts, newContact];
+    setContacts(updated);
+    saveToLocal(STORAGE_KEYS.contacts, updated);
     setContactSuccess(`Thank you ${contactName}, we'll respond within 24 hours.`);
     setTimeout(() => setContactSuccess(''), 3000);
     setContactName(''); setContactEmail(''); setContactMsg('');
@@ -270,240 +334,268 @@ const Dashboard = () => {
 
   const handleDataRequest = (e: React.FormEvent) => {
     e.preventDefault();
-    setRequestSuccess(`Request submitted! We'll send data for ${requestMine} (${requestLocation}) within 3 days.`);
+    const newReq = { id: Date.now(), name: requestName, mine: requestMine, location: requestLocation, dataNeeded: requestData, date: new Date().toISOString(), approved: false };
+    const updated = [...dataRequests, newReq];
+    setDataRequests(updated);
+    saveToLocal(STORAGE_KEYS.dataRequests, updated);
+    setRequestSuccess(`Request submitted! Admin will review and send you login credentials.`);
     setTimeout(() => setRequestSuccess(''), 3000);
     setRequestName(''); setRequestMine(''); setRequestLocation(''); setRequestData('');
   };
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-900 text-white p-6">
-        <div className="bg-red-900/50 border border-red-500 rounded-2xl p-6">
-          <h2 className="text-xl font-bold text-red-300">ML Model Error</h2>
-          <pre className="mt-2 text-sm text-red-200">{error}</pre>
-        </div>
-      </div>
-    );
-  }
+  const handleInstSubscribe = (e: React.FormEvent) => {
+    e.preventDefault();
+    const newSub = { id: Date.now(), institution: instSubInst, contactName: instSubName, email: instSubEmail, date: new Date().toISOString() };
+    const updated = [...instSubs, newSub];
+    setInstSubs(updated);
+    saveToLocal(STORAGE_KEYS.instSubs, updated);
+    setInstSubMessage('Institutional subscription request sent. We will contact you.');
+    setTimeout(() => setInstSubMessage(''), 3000);
+    setInstSubName(''); setInstSubEmail(''); setInstSubInst('');
+  };
 
-  if (modelLoading) {
-    return (
-      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
-        <div className="text-center">
-          <Brain size={48} className="animate-pulse text-purple-400 mx-auto mb-4" />
-          <h2 className="text-xl">Loading Simora AI (TensorFlow.js)…</h2>
-        </div>
-      </div>
-    );
-  }
+  // Admin functions
+  const handleAdminLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loginEmail === 'admin@simora.com' && loginPassword === 'admin123') {
+      setAdminLoggedIn(true);
+      setShowAdminLogin(false);
+      setLoginError('');
+    } else {
+      setLoginError('Invalid credentials');
+    }
+  };
+
+  const handleUserLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    const user = users.find(u => u.email === loginEmail && u.password === loginPassword);
+    if (user && !isExpired(user.expiry)) {
+      setUserLoggedIn({ id: user.id, name: user.name, email: user.email, expiry: user.expiry, mine: user.mine });
+      setShowUserLogin(false);
+      setLoginError('');
+    } else if (user && isExpired(user.expiry)) {
+      setLoginError('Your access has expired. Please request new data.');
+    } else {
+      setLoginError('Invalid email or password');
+    }
+  };
+
+  const approveDataRequest = (req: any, days: number) => {
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + days);
+    const newUser = {
+      id: Date.now(),
+      name: req.name,
+      email: `user_${req.name.replace(/\s/g, '')}${Date.now()}@simora.com`,
+      password: Math.random().toString(36).substring(2, 8),
+      mine: req.mine,
+      location: req.location,
+      expiry: expiryDate.toISOString(),
+      createdAt: new Date().toISOString()
+    };
+    const updatedUsers = [...users, newUser];
+    setUsers(updatedUsers);
+    saveToLocal(STORAGE_KEYS.users, updatedUsers);
+    // Mark request as approved
+    const updatedReqs = dataRequests.map(r => r.id === req.id ? { ...r, approved: true } : r);
+    setDataRequests(updatedReqs);
+    saveToLocal(STORAGE_KEYS.dataRequests, updatedReqs);
+    alert(`User created!\nEmail: ${newUser.email}\nPassword: ${newUser.password}\nExpires: ${expiryDate.toLocaleString()}`);
+  };
+
+  const handleUploadImage = () => {
+    if (!newImageUrl) return;
+    const newImg = {
+      id: Date.now(),
+      url: newImageUrl,
+      caption: newImageCaption || 'Mine area',
+      timestamp: new Date().toISOString(),
+      mine: selectedMine
+    };
+    const updated = [newImg, ...galleryImages];
+    setGalleryImages(updated);
+    saveToLocal(STORAGE_KEYS.gallery, updated);
+    setNewImageUrl('');
+    setNewImageCaption('');
+  };
+
+  const simulateRealTimeImage = () => {
+    const fakeUrl = `https://picsum.photos/id/${Math.floor(Math.random() * 100)}/400/300`;
+    const newImg = {
+      id: Date.now(),
+      url: fakeUrl,
+      caption: `Live feed ${new Date().toLocaleTimeString()}`,
+      timestamp: new Date().toISOString(),
+      mine: selectedMine
+    };
+    const updated = [newImg, ...galleryImages];
+    setGalleryImages(updated);
+    saveToLocal(STORAGE_KEYS.gallery, updated);
+  };
+
+  const clearAdminData = (type: 'subs' | 'requests' | 'contacts' | 'users' | 'gallery' | 'instSubs') => {
+    if (type === 'subs') { setSubscriptions([]); saveToLocal(STORAGE_KEYS.subscriptions, []); }
+    if (type === 'requests') { setDataRequests([]); saveToLocal(STORAGE_KEYS.dataRequests, []); }
+    if (type === 'contacts') { setContacts([]); saveToLocal(STORAGE_KEYS.contacts, []); }
+    if (type === 'users') { setUsers([]); saveToLocal(STORAGE_KEYS.users, []); }
+    if (type === 'gallery') { setGalleryImages([]); saveToLocal(STORAGE_KEYS.gallery, []); }
+    if (type === 'instSubs') { setInstSubs([]); saveToLocal(STORAGE_KEYS.instSubs, []); }
+  };
+
+  if (error) return <div className="min-h-screen bg-gray-900 text-white p-6">Error: {error}</div>;
+  if (modelLoading) return <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center"><Brain className="animate-pulse text-purple-400" size={48} /><span className="ml-2">Loading Simora AI…</span></div>;
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
-      {/* Tab Navigation */}
-      <div className="sticky top-0 z-10 bg-gray-900/95 backdrop-blur border-b border-gray-800 px-6 py-3 flex gap-4 overflow-x-auto">
-        <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-full transition ${activeTab === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}>
-          Dashboard
-        </button>
-        <button onClick={() => setActiveTab('subscribe')} className={`px-4 py-2 rounded-full transition ${activeTab === 'subscribe' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}>
-          <UserCheck size={16} className="inline mr-1" /> Subscribe
-        </button>
-        <button onClick={() => setActiveTab('contact')} className={`px-4 py-2 rounded-full transition ${activeTab === 'contact' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}>
-          <Mail size={16} className="inline mr-1" /> Contact Us
-        </button>
-        <button onClick={() => setActiveTab('dataRequest')} className={`px-4 py-2 rounded-full transition ${activeTab === 'dataRequest' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}>
-          <FileText size={16} className="inline mr-1" /> Data Request (Peasant Miners)
-        </button>
+      {/* Top bar */}
+      <div className="bg-gray-800/80 px-6 py-2 flex justify-end gap-3 text-sm">
+        {!adminLoggedIn && <button onClick={() => setShowAdminLogin(true)} className="hover:text-blue-400"><Lock size={14} className="inline mr-1" /> Admin</button>}
+        {!userLoggedIn && <button onClick={() => setShowUserLogin(true)} className="hover:text-green-400"><LogIn size={14} className="inline mr-1" /> Data Access Login</button>}
+        {adminLoggedIn && <span className="text-green-400">Admin Mode</span>}
+        {userLoggedIn && <span className="text-green-400">Logged in as {userLoggedIn.name} (expires: {new Date(userLoggedIn.expiry).toLocaleDateString()})</span>}
+        {(adminLoggedIn || userLoggedIn) && <button onClick={() => { setAdminLoggedIn(false); setUserLoggedIn(null); }} className="text-red-400">Logout</button>}
       </div>
 
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      {/* Login Modals */}
+      {showAdminLogin && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+          <div className="bg-gray-800 p-6 rounded-2xl w-96">
+            <h2 className="text-xl mb-4">Admin Login</h2>
+            <form onSubmit={handleAdminLogin}>
+              <input type="email" placeholder="admin@simora.com" value={loginEmail} onChange={e=>setLoginEmail(e.target.value)} className="w-full bg-gray-900 p-2 rounded mb-2" />
+              <input type="password" placeholder="admin123" value={loginPassword} onChange={e=>setLoginPassword(e.target.value)} className="w-full bg-gray-900 p-2 rounded mb-2" />
+              <button type="submit" className="bg-blue-600 w-full py-2 rounded">Login</button>
+              {loginError && <p className="text-red-400 text-sm mt-2">{loginError}</p>}
+            </form>
+            <button onClick={()=>{setShowAdminLogin(false); setLoginError('');}} className="mt-2 text-gray-400">Cancel</button>
+          </div>
+        </div>
+      )}
+      {showUserLogin && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+          <div className="bg-gray-800 p-6 rounded-2xl w-96">
+            <h2 className="text-xl mb-4">Data Requester Login</h2>
+            <form onSubmit={handleUserLogin}>
+              <input type="email" placeholder="Email" value={loginEmail} onChange={e=>setLoginEmail(e.target.value)} className="w-full bg-gray-900 p-2 rounded mb-2" />
+              <input type="password" placeholder="Password" value={loginPassword} onChange={e=>setLoginPassword(e.target.value)} className="w-full bg-gray-900 p-2 rounded mb-2" />
+              <button type="submit" className="bg-green-600 w-full py-2 rounded">Login</button>
+              {loginError && <p className="text-red-400 text-sm mt-2">{loginError}</p>}
+            </form>
+            <button onClick={()=>{setShowUserLogin(false); setLoginError('');}} className="mt-2 text-gray-400">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="sticky top-0 z-10 bg-gray-900/95 backdrop-blur border-b border-gray-800 px-6 py-3 flex gap-4 overflow-x-auto">
+        <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-full ${activeTab === 'dashboard' ? 'bg-blue-600' : 'bg-gray-800'}`}>Dashboard</button>
+        <button onClick={() => setActiveTab('subscribe')} className={`px-4 py-2 rounded-full ${activeTab === 'subscribe' ? 'bg-blue-600' : 'bg-gray-800'}`}>Subscribe</button>
+        <button onClick={() => setActiveTab('contact')} className={`px-4 py-2 rounded-full ${activeTab === 'contact' ? 'bg-blue-600' : 'bg-gray-800'}`}>Contact</button>
+        <button onClick={() => setActiveTab('dataRequest')} className={`px-4 py-2 rounded-full ${activeTab === 'dataRequest' ? 'bg-blue-600' : 'bg-gray-800'}`}>Data Request</button>
+        <button onClick={() => setActiveTab('instSubscribe')} className={`px-4 py-2 rounded-full ${activeTab === 'instSubscribe' ? 'bg-blue-600' : 'bg-gray-800'}`}>Institution Sub</button>
+        <button onClick={() => setActiveTab('gallery')} className={`px-4 py-2 rounded-full ${activeTab === 'gallery' ? 'bg-blue-600' : 'bg-gray-800'}`}>Mine Gallery</button>
+        {adminLoggedIn && <button onClick={() => setActiveTab('adminPanel')} className="px-4 py-2 rounded-full bg-purple-600">Admin Panel</button>}
+        {userLoggedIn && <button onClick={() => setActiveTab('myData')} className="px-4 py-2 rounded-full bg-green-600">My Data</button>}
+      </div>
+
+      <div className="p-6 max-w-7xl mx-auto space-y-6">
+        {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-            {/* Header */}
-            <div className="flex justify-between items-center flex-wrap gap-4">
-              <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                MineGuard™ · Real‑time Risk Intelligence
-              </h2>
-              <div className="flex gap-3">
-                <div className="bg-gray-800/50 backdrop-blur rounded-full px-3 py-1 text-sm flex items-center gap-1"><Satellite size={14} /> Sentinel-1</div>
-                <div className="bg-gray-800/50 backdrop-blur rounded-full px-3 py-1 text-sm flex items-center gap-1"><Wifi size={14} /> IoT</div>
-                <div className="bg-purple-800/70 backdrop-blur rounded-full px-3 py-1 text-sm flex items-center gap-1"><Brain size={14} /> TensorFlow.js</div>
-              </div>
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">MineGuard™ · Real-time Risk Intelligence</h2>
+              <div className="flex gap-2"><div className="bg-gray-800/50 rounded-full px-3 py-1 text-sm"><Satellite size={14} className="inline mr-1"/> Sentinel-1</div><div className="bg-gray-800/50 rounded-full px-3 py-1 text-sm"><Wifi size={14} className="inline mr-1"/> IoT</div><div className="bg-purple-800/70 rounded-full px-3 py-1 text-sm"><Brain size={14} className="inline mr-1"/> TF.js</div></div>
             </div>
-
-            {/* Main panel (unchanged from previous version) */}
             <div className="grid md:grid-cols-3 gap-6">
               <div className="md:col-span-2 bg-gray-800/40 backdrop-blur rounded-2xl p-6 border border-gray-700">
                 <label className="text-sm text-gray-400">Active Mine</label>
-                <select value={selectedMine} onChange={e => setSelectedMine(e.target.value)} className="w-full mt-1 bg-gray-900 border-gray-700 rounded-lg p-2">
-                  <option>Great Dyke - North Dam</option>
-                  <option>Great Dyke - South Pit</option>
-                  <option>HWange Colliery</option>
-                </select>
+                <select value={selectedMine} onChange={e=>setSelectedMine(e.target.value)} className="w-full mt-1 bg-gray-900 border-gray-700 rounded-lg p-2"><option>Great Dyke - North Dam</option><option>Great Dyke - South Pit</option><option>HWange Colliery</option></select>
                 <div className="mt-4 space-y-3">
-                  <div>
-                    <div className="flex justify-between items-center">
-                      <label className="text-sm">InSAR deformation (mm/day): {insarValue.toFixed(2)}</label>
-                      <button onClick={fetchLiveInsar} disabled={fetchingEO} className="text-xs bg-blue-800 hover:bg-blue-700 px-2 py-1 rounded flex items-center gap-1">
-                        <RefreshCw size={12} className={fetchingEO ? 'animate-spin' : ''} /> Refresh EO Data
-                      </button>
-                    </div>
-                    <input type="range" min="0.5" max="8" step="0.1" value={insarValue} onChange={e => setInsarValue(parseFloat(e.target.value))} className="w-full mt-1" />
-                    {lastFetch && <div className="text-xs text-gray-400 mt-1">Source: {eoSource} | Last fetch: {lastFetch}</div>}
-                  </div>
-                  <div>
-                    <label className="text-sm">IoT vibration (g): {vibrationValue.toFixed(2)}</label>
-                    <input type="range" min="0.1" max="2.5" step="0.05" value={vibrationValue} onChange={e => setVibrationValue(parseFloat(e.target.value))} className="w-full" />
-                  </div>
-                  <div>
-                    <label className="text-sm">Rainfall (mm/h): {rainfallValue.toFixed(2)}</label>
-                    <input type="range" min="0" max="1" step="0.01" value={rainfallValue} onChange={e => setRainfallValue(parseFloat(e.target.value))} className="w-full" />
-                  </div>
+                  <div><div className="flex justify-between"><label>InSAR (mm/day): {insarValue.toFixed(2)}</label><button onClick={fetchLiveInsar} disabled={fetchingEO} className="text-xs bg-blue-800 px-2 py-1 rounded"><RefreshCw size={12} className={fetchingEO ? 'animate-spin inline' : 'inline'} /> Refresh EO</button></div><input type="range" min="0.5" max="8" step="0.1" value={insarValue} onChange={e=>setInsarValue(parseFloat(e.target.value))} className="w-full" />{lastFetch && <div className="text-xs text-gray-400">Source: {eoSource} | Last fetch: {lastFetch}</div>}</div>
+                  <div><label>IoT vibration (g): {vibrationValue.toFixed(2)}</label><input type="range" min="0.1" max="2.5" step="0.05" value={vibrationValue} onChange={e=>setVibrationValue(parseFloat(e.target.value))} className="w-full" /></div>
+                  <div><label>Rainfall (mm/h): {rainfallValue.toFixed(2)}</label><input type="range" min="0" max="1" step="0.01" value={rainfallValue} onChange={e=>setRainfallValue(parseFloat(e.target.value))} className="w-full" /></div>
                 </div>
-                <div className="mt-6 flex items-center justify-between">
-                  <div><div className="text-5xl font-bold text-red-500">{riskPercent}%</div><div className="text-gray-400">collapse risk in 48h</div></div>
-                  <AlertTriangle size={48} className="text-red-500 animate-pulse" />
-                </div>
-                <div className="mt-4 h-2 bg-gray-700 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-yellow-500 to-red-500 rounded-full" style={{ width: `${riskPercent}%` }}></div>
-                </div>
-                <div className="flex gap-3 mt-6">
-                  <button onClick={updatePrediction} className="flex-1 bg-blue-600 hover:bg-blue-500 transition rounded-lg py-2 flex items-center justify-center gap-2">
-                    <Activity size={18} /> Run ML Prediction
-                  </button>
-                  <button onClick={handleRetrain} className="flex-1 bg-purple-700 hover:bg-purple-600 transition rounded-lg py-2 flex items-center justify-center gap-2">
-                    <Brain size={18} /> {training ? 'Retraining...' : 'Retrain with New Data'}
-                  </button>
-                </div>
+                <div className="mt-6 flex justify-between items-center"><div><div className="text-5xl font-bold text-red-500">{riskPercent}%</div><div className="text-gray-400">collapse risk in 48h</div></div><AlertTriangle size={48} className="text-red-500 animate-pulse" /></div>
+                <div className="mt-4 h-2 bg-gray-700 rounded-full"><div className="h-full bg-gradient-to-r from-yellow-500 to-red-500 rounded-full" style={{ width: `${riskPercent}%` }}></div></div>
+                <div className="flex gap-3 mt-6"><button onClick={updatePrediction} className="flex-1 bg-blue-600 py-2 rounded flex items-center justify-center gap-2"><Activity size={18}/> Run ML Prediction</button><button onClick={handleRetrain} className="flex-1 bg-purple-700 py-2 rounded flex items-center justify-center gap-2"><Brain size={18}/> {training ? 'Retraining...' : 'Retrain with New Data'}</button></div>
               </div>
-              <div className="bg-gradient-to-br from-blue-900/30 to-purple-900/30 rounded-2xl p-6 border border-blue-500/30 backdrop-blur">
-                <div className="flex items-center gap-2 text-blue-400"><TrendingUp size={18} /> Live Traction</div>
-                <div className="text-3xl font-bold mt-2">{Math.floor(userCount)} <span className="text-sm font-normal text-gray-400">active users</span></div>
-                <div className="text-sm text-gray-300 mt-1">+23% this quarter</div>
-                <div className="mt-4 text-xs text-gray-400">Pilots: Great Dyke, Hwange Colliery • 5 mines • 12 villages</div>
-              </div>
+              <div className="bg-gradient-to-br from-blue-900/30 to-purple-900/30 rounded-2xl p-6 border border-blue-500/30"><div className="text-blue-400"><TrendingUp size={18} className="inline mr-1"/> Live Traction</div><div className="text-3xl font-bold mt-2">{Math.floor(userCount)} <span className="text-sm font-normal">active users</span></div><div className="text-sm mt-1">+23% this quarter</div><div className="mt-4 text-xs">5 mines • 12 villages</div></div>
             </div>
-
-            {/* Charts and ML info – same as before */}
             <div className="grid md:grid-cols-2 gap-6">
-              <div className="bg-gray-800/40 rounded-2xl p-4 border border-gray-700">
-                <h3 className="font-semibold flex items-center gap-2"><Satellite size={16} /> InSAR Time Series (simulated)</h3>
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={Array.from({ length: 10 }, (_, i) => ({ time: `${i * 2}h`, mm: insarValue + (Math.random() - 0.5) * 0.5 }))}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis dataKey="time" stroke="#9ca3af" />
-                    <YAxis stroke="#9ca3af" />
-                    <Tooltip contentStyle={{ backgroundColor: '#1f2937' }} />
-                    <Line type="monotone" dataKey="mm" stroke="#f97316" strokeWidth={2} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="bg-gray-800/40 rounded-2xl p-4 border border-gray-700">
-                <h3 className="font-semibold flex items-center gap-2"><Activity size={16} /> Predicted Risk Trend</h3>
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={riskHistory}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis dataKey="time" stroke="#9ca3af" />
-                    <YAxis domain={[0, 100]} stroke="#9ca3af" />
-                    <Tooltip contentStyle={{ backgroundColor: '#1f2937' }} />
-                    <Line type="monotone" dataKey="risk" stroke="#ef4444" strokeWidth={2} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+              <div className="bg-gray-800/40 rounded-2xl p-4"><h3 className="font-semibold"><Satellite size={16} className="inline mr-1"/> InSAR Time Series</h3><ResponsiveContainer width="100%" height={200}><LineChart data={Array.from({length:10},(_,i)=>({time:`${i*2}h`, mm: insarValue+(Math.random()-0.5)*0.5}))}><CartesianGrid stroke="#374151"/><XAxis dataKey="time" stroke="#9ca3af"/><YAxis stroke="#9ca3af"/><Tooltip/><Line type="monotone" dataKey="mm" stroke="#f97316" strokeWidth={2} dot={false}/></LineChart></ResponsiveContainer></div>
+              <div className="bg-gray-800/40 rounded-2xl p-4"><h3 className="font-semibold"><Activity size={16} className="inline mr-1"/> Predicted Risk Trend</h3><ResponsiveContainer width="100%" height={200}><LineChart data={riskHistory}><CartesianGrid stroke="#374151"/><XAxis dataKey="time" stroke="#9ca3af"/><YAxis domain={[0,100]} stroke="#9ca3af"/><Tooltip/><Line type="monotone" dataKey="risk" stroke="#ef4444" strokeWidth={2}/></LineChart></ResponsiveContainer></div>
             </div>
-
-            <div className="bg-gray-800/30 rounded-2xl p-4 border border-gray-700 flex flex-wrap justify-between items-center gap-3">
-              <div className="flex items-center gap-3"><Cpu size={20} className="text-green-400" /><span className="font-mono text-sm">Simora‑Net v2.3 (TensorFlow.js · 3‑layer NN)</span></div>
-              <div className="text-xs text-gray-400"><span className="text-green-300">Model active</span></div>
-            </div>
-
-            <div className="bg-gray-800/40 rounded-2xl p-4 border border-purple-500/30 flex flex-wrap justify-between items-center gap-3">
-              <div><span className="text-sm text-gray-400">Model accuracy (test set): </span><span className="text-xl font-bold text-purple-300">{modelAccuracy !== null ? modelAccuracy.toFixed(1) : '—'}%</span></div>
-              <div><span className="text-sm text-gray-400">Last training loss: </span><span className="text-xl font-bold text-orange-300">{modelLoss !== null ? modelLoss.toFixed(4) : '—'}</span></div>
-              <button onClick={refreshMetrics} className="bg-purple-800 hover:bg-purple-700 px-3 py-1 rounded text-xs transition">↻ Evaluate</button>
-            </div>
-
-            <div className="bg-gray-800/40 rounded-2xl p-4 border border-green-500/30">
-              <div className="flex justify-between items-center flex-wrap gap-3 mb-3">
-                <h3 className="font-semibold flex items-center gap-2"><Brain size={16} className="text-green-400" /> Training Loss Curve (historical)</h3>
-                <div className="flex gap-2">
-                  <select value={selectedRunId || ''} onChange={e => handleSelectRun(e.target.value)} className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm">
-                    {trainingRuns.map(run => (
-                      <option key={run.id} value={run.id}>{run.timestamp.toLocaleTimeString()} - {run.description.slice(0, 40)}</option>
-                    ))}
-                  </select>
-                  <button onClick={handleResetHistory} className="bg-red-800 hover:bg-red-700 px-3 py-1 rounded text-xs transition">Reset History</button>
-                </div>
-              </div>
-              {displayLossHistory.length > 0 ? (
-                <ResponsiveContainer width="100%" height={220}>
-                  <LineChart data={displayLossHistory.map((loss, idx) => ({ epoch: idx + 1, loss }))}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis dataKey="epoch" stroke="#9ca3af" />
-                    <YAxis stroke="#9ca3af" />
-                    <Tooltip contentStyle={{ backgroundColor: '#1f2937' }} />
-                    <Line type="monotone" dataKey="loss" stroke="#22c55e" strokeWidth={2} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="text-center text-gray-400 py-8">No training history yet. Click "Retrain" to generate loss curve.</div>
-              )}
-            </div>
+            <div className="bg-gray-800/30 rounded-2xl p-4 flex flex-wrap justify-between"><div><Cpu size={20} className="inline text-green-400"/> Simora‑Net (TF.js 3‑layer)</div><div className="text-xs text-green-300">Model active</div></div>
+            <div className="bg-gray-800/40 rounded-2xl p-4 flex flex-wrap justify-between border border-purple-500/30"><div><span className="text-sm">Model accuracy:</span> <span className="text-xl font-bold text-purple-300">{modelAccuracy !== null ? modelAccuracy.toFixed(1) : '—'}%</span></div><div><span className="text-sm">Last loss:</span> <span className="text-xl font-bold text-orange-300">{modelLoss !== null ? modelLoss.toFixed(4) : '—'}</span></div><button onClick={refreshMetrics} className="bg-purple-800 px-3 py-1 rounded text-xs">↻ Evaluate</button></div>
+            <div className="bg-gray-800/40 rounded-2xl p-4 border border-green-500/30"><div className="flex justify-between"><h3 className="font-semibold"><Brain size={16} className="inline text-green-400"/> Training Loss Curve</h3><select value={selectedRunId || ''} onChange={e=>handleSelectRun(e.target.value)} className="bg-gray-900 text-sm rounded p-1">{trainingRuns.map(r=><option key={r.id} value={r.id}>{r.timestamp.toLocaleTimeString()} - {r.description.slice(0,30)}</option>)}</select><button onClick={handleResetHistory} className="bg-red-800 px-2 py-1 rounded text-xs">Reset</button></div>{displayLossHistory.length?<ResponsiveContainer width="100%" height={220}><LineChart data={displayLossHistory.map((l,i)=>({epoch:i+1,loss:l}))}><CartesianGrid stroke="#374151"/><XAxis dataKey="epoch"/><YAxis/><Tooltip/><Line type="monotone" dataKey="loss" stroke="#22c55e" strokeWidth={2} dot={false}/></LineChart></ResponsiveContainer>:<div className="text-center py-8">No history. Click Retrain.</div>}</div>
           </motion.div>
         )}
 
+        {/* Subscribe Tab */}
         {activeTab === 'subscribe' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-gray-800/40 backdrop-blur rounded-2xl p-6 border border-gray-700 max-w-2xl mx-auto">
-            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2"><UserCheck size={24} /> Subscription Plans</h2>
-            <div className="grid md:grid-cols-2 gap-4 mb-6">
-              <div className="bg-gray-800/60 p-4 rounded-xl border border-blue-500/30">
-                <h3 className="font-bold text-blue-400">Free Tier</h3>
-                <p className="text-sm">Weekly risk alerts (SMS/Email), basic map view</p>
-                <p className="text-lg font-bold mt-2">$0/month</p>
-              </div>
-              <div className="bg-gray-800/60 p-4 rounded-xl border border-purple-500/30">
-                <h3 className="font-bold text-purple-400">Pro Tier</h3>
-                <p className="text-sm">Daily high‑resolution analytics, priority support, API access</p>
-                <p className="text-lg font-bold mt-2">$29/month</p>
-              </div>
-            </div>
-            <form onSubmit={handleSubscribe} className="space-y-4">
-              <input type="text" placeholder="Full Name (optional)" value={subName} onChange={e => setSubName(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2" />
-              <input type="email" placeholder="Email *" required value={subEmail} onChange={e => setSubEmail(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2" />
-              <select value={subTier} onChange={e => setSubTier(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2">
-                <option value="free">Free Tier</option>
-                <option value="pro">Pro Tier ($29/mo)</option>
-              </select>
-              <button type="submit" className="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-lg flex items-center gap-2"><CreditCard size={18} /> Subscribe</button>
-              {subMessage && <p className="text-green-400 text-sm">{subMessage}</p>}
-            </form>
+          <motion.div className="bg-gray-800/40 rounded-2xl p-6 max-w-2xl mx-auto">
+            <h2 className="text-2xl font-bold"><UserCheck className="inline mr-2"/> Subscription Plans</h2>
+            <div className="grid md:grid-cols-2 gap-4 my-6"><div className="bg-gray-800/60 p-4 rounded-xl border border-blue-500/30"><h3 className="text-blue-400 font-bold">Free</h3><p>Weekly alerts, basic map</p><p className="text-lg font-bold mt-2">$0/mo</p></div><div className="bg-gray-800/60 p-4 rounded-xl border border-purple-500/30"><h3 className="text-purple-400 font-bold">Pro</h3><p>Daily analytics, API access</p><p className="text-lg font-bold mt-2">$29/mo</p></div></div>
+            <form onSubmit={handleSubscribe} className="space-y-4"><input placeholder="Full name" value={subName} onChange={e=>setSubName(e.target.value)} className="w-full bg-gray-900 p-2 rounded" /><input type="email" placeholder="Email *" required value={subEmail} onChange={e=>setSubEmail(e.target.value)} className="w-full bg-gray-900 p-2 rounded" /><select value={subTier} onChange={e=>setSubTier(e.target.value)} className="w-full bg-gray-900 p-2 rounded"><option value="free">Free</option><option value="pro">Pro ($29/mo)</option></select><button type="submit" className="bg-blue-600 px-6 py-2 rounded"><CreditCard className="inline mr-1"/> Subscribe</button>{subMessage && <p className="text-green-400 text-sm">{subMessage}</p>}</form>
           </motion.div>
         )}
 
+        {/* Contact Tab */}
         {activeTab === 'contact' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-gray-800/40 backdrop-blur rounded-2xl p-6 border border-gray-700 max-w-2xl mx-auto">
-            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2"><Mail size={24} /> Contact Support</h2>
-            <form onSubmit={handleContact} className="space-y-4">
-              <input type="text" placeholder="Your Name" required value={contactName} onChange={e => setContactName(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2" />
-              <input type="email" placeholder="Email" required value={contactEmail} onChange={e => setContactEmail(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2" />
-              <textarea placeholder="Message" rows={4} required value={contactMsg} onChange={e => setContactMsg(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2"></textarea>
-              <button type="submit" className="bg-purple-600 hover:bg-purple-500 px-6 py-2 rounded-lg flex items-center gap-2"><Send size={18} /> Send Message</button>
-              {contactSuccess && <p className="text-green-400 text-sm">{contactSuccess}</p>}
-            </form>
+          <motion.div className="bg-gray-800/40 rounded-2xl p-6 max-w-2xl mx-auto">
+            <h2 className="text-2xl font-bold"><Mail className="inline mr-2"/> Contact Support</h2>
+            <form onSubmit={handleContact} className="space-y-4 mt-4"><input placeholder="Your name" required value={contactName} onChange={e=>setContactName(e.target.value)} className="w-full bg-gray-900 p-2 rounded" /><input type="email" placeholder="Email" required value={contactEmail} onChange={e=>setContactEmail(e.target.value)} className="w-full bg-gray-900 p-2 rounded" /><textarea placeholder="Message" rows={4} required value={contactMsg} onChange={e=>setContactMsg(e.target.value)} className="w-full bg-gray-900 p-2 rounded"></textarea><button type="submit" className="bg-purple-600 px-6 py-2 rounded"><Send className="inline mr-1"/> Send</button>{contactSuccess && <p className="text-green-400 text-sm">{contactSuccess}</p>}</form>
           </motion.div>
         )}
 
+        {/* Data Request Tab (Peasant Miners) */}
         {activeTab === 'dataRequest' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-gray-800/40 backdrop-blur rounded-2xl p-6 border border-gray-700 max-w-2xl mx-auto">
-            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2"><FileText size={24} /> Peasant Miner Data Request</h2>
-            <p className="text-gray-300 mb-4">Request specific EO data (e.g., monthly risk maps, satellite imagery) for your small‑scale mine. Our team will process and send you the data.</p>
-            <form onSubmit={handleDataRequest} className="space-y-4">
-              <input type="text" placeholder="Your Name / Cooperative" required value={requestName} onChange={e => setRequestName(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2" />
-              <input type="text" placeholder="Mine Name / Location" required value={requestMine} onChange={e => setRequestMine(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2" />
-              <input type="text" placeholder="Coordinates or Area (e.g., near Hwange)" required value={requestLocation} onChange={e => setRequestLocation(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2" />
-              <textarea placeholder="What data do you need? (e.g., last 3 months InSAR deformation, vegetation health)" rows={3} required value={requestData} onChange={e => setRequestData(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2"></textarea>
-              <button type="submit" className="bg-green-600 hover:bg-green-500 px-6 py-2 rounded-lg flex items-center gap-2"><FileText size={18} /> Submit Request</button>
-              {requestSuccess && <p className="text-green-400 text-sm">{requestSuccess}</p>}
-            </form>
+          <motion.div className="bg-gray-800/40 rounded-2xl p-6 max-w-2xl mx-auto">
+            <h2 className="text-2xl font-bold"><FileText className="inline mr-2"/> Peasant Miner Data Request</h2>
+            <p className="text-gray-300 my-2">Request specific EO data for your small‑scale mine. Admin will review and send you login credentials.</p>
+            <form onSubmit={handleDataRequest} className="space-y-4"><input placeholder="Your name / Cooperative" required value={requestName} onChange={e=>setRequestName(e.target.value)} className="w-full bg-gray-900 p-2 rounded" /><input placeholder="Mine name / location" required value={requestMine} onChange={e=>setRequestMine(e.target.value)} className="w-full bg-gray-900 p-2 rounded" /><input placeholder="Coordinates or area" required value={requestLocation} onChange={e=>setRequestLocation(e.target.value)} className="w-full bg-gray-900 p-2 rounded" /><textarea placeholder="What data do you need? (e.g., last 3 months InSAR)" rows={3} required value={requestData} onChange={e=>setRequestData(e.target.value)} className="w-full bg-gray-900 p-2 rounded"></textarea><button type="submit" className="bg-green-600 px-6 py-2 rounded"><FileText className="inline mr-1"/> Submit Request</button>{requestSuccess && <p className="text-green-400 text-sm">{requestSuccess}</p>}</form>
+          </motion.div>
+        )}
+
+        {/* Institutional Subscription */}
+        {activeTab === 'instSubscribe' && (
+          <motion.div className="bg-gray-800/40 rounded-2xl p-6 max-w-2xl mx-auto">
+            <h2 className="text-2xl font-bold">🏛️ Institutional Subscription</h2>
+            <form onSubmit={handleInstSubscribe} className="space-y-4 mt-4"><input placeholder="Institution name" required value={instSubInst} onChange={e=>setInstSubInst(e.target.value)} className="w-full bg-gray-900 p-2 rounded" /><input placeholder="Contact person" required value={instSubName} onChange={e=>setInstSubName(e.target.value)} className="w-full bg-gray-900 p-2 rounded" /><input type="email" placeholder="Email" required value={instSubEmail} onChange={e=>setInstSubEmail(e.target.value)} className="w-full bg-gray-900 p-2 rounded" /><button type="submit" className="bg-blue-600 px-6 py-2 rounded">Request Subscription</button>{instSubMessage && <p className="text-green-400 text-sm">{instSubMessage}</p>}</form>
+          </motion.div>
+        )}
+
+        {/* Mine Gallery */}
+        {activeTab === 'gallery' && (
+          <motion.div className="space-y-4">
+            <h2 className="text-2xl font-bold"><Image className="inline mr-2"/> Mine Gallery – Real‑time & Historical</h2>
+            {adminLoggedIn && (
+              <div className="bg-gray-800 p-4 rounded-2xl"><h3>Admin: Upload or Simulate Live Feed</h3><input placeholder="Image URL" value={newImageUrl} onChange={e=>setNewImageUrl(e.target.value)} className="w-full bg-gray-900 p-2 rounded mb-2" /><input placeholder="Caption" value={newImageCaption} onChange={e=>setNewImageCaption(e.target.value)} className="w-full bg-gray-900 p-2 rounded mb-2" /><button onClick={handleUploadImage} className="bg-green-600 px-4 py-1 rounded mr-2">Upload</button><button onClick={simulateRealTimeImage} className="bg-yellow-600 px-4 py-1 rounded">Simulate Live Feed</button></div>
+            )}
+            <div className="grid md:grid-cols-3 gap-4">{galleryImages.map(img=><div key={img.id} className="bg-gray-800 rounded-xl overflow-hidden"><img src={img.url} className="w-full h-48 object-cover" /><div className="p-2"><p className="text-sm">{img.caption}</p><p className="text-xs text-gray-400">{new Date(img.timestamp).toLocaleString()}</p></div></div>)}</div>
+          </motion.div>
+        )}
+
+        {/* Admin Panel (only when admin logged in) */}
+        {adminLoggedIn && activeTab === 'adminPanel' && (
+          <motion.div className="space-y-8">
+            <h2 className="text-2xl font-bold">Admin Dashboard</h2>
+            <div className="bg-gray-800 p-4 rounded-2xl"><h3 className="text-xl">Pending Data Requests</h3>{dataRequests.filter(r=>!r.approved).length===0?<p className="text-gray-400">None.</p>:dataRequests.filter(r=>!r.approved).map(req=><div key={req.id} className="border-b border-gray-700 py-2"><p><strong>{req.name}</strong> – {req.mine}, {req.location}</p><p className="text-sm">{req.dataNeeded}</p><div className="flex gap-2 mt-2"><button onClick={()=>approveDataRequest(req,7)} className="bg-green-600 px-2 py-1 text-sm">Approve (7 days)</button><button onClick={()=>approveDataRequest(req,30)} className="bg-blue-600 px-2 py-1 text-sm">Approve (30 days)</button></div></div>)}</div>
+            <div className="bg-gray-800 p-4 rounded-2xl"><h3 className="text-xl">Users with Access</h3><table className="w-full text-sm"><thead><tr><th>Name</th><th>Email</th><th>Mine</th><th>Expiry</th><th>Status</th></tr></thead><tbody>{users.map(u=><tr key={u.id}><td>{u.name}</td><td>{u.email}</td><td>{u.mine}</td><td>{new Date(u.expiry).toLocaleDateString()}</td><td>{isExpired(u.expiry)?<XCircle size={14} className="text-red-400 inline"/>:<CheckCircle size={14} className="text-green-400 inline"/>}</td></tr>)}</tbody></table><button onClick={()=>clearAdminData('users')} className="mt-2 text-red-400 text-sm">Clear all users</button></div>
+            <div className="bg-gray-800 p-4 rounded-2xl"><h3 className="text-xl">Institutional Subscriptions</h3><table className="w-full text-sm"><thead><tr><th>Institution</th><th>Contact</th><th>Email</th><th>Date</th></tr></thead><tbody>{instSubs.map(s=><tr key={s.id}><td>{s.institution}</td><td>{s.contactName}</td><td>{s.email}</td><td>{new Date(s.date).toLocaleDateString()}</td></tr>)}</tbody></table><button onClick={()=>clearAdminData('instSubs')} className="mt-2 text-red-400 text-sm">Clear all</button></div>
+            <div className="bg-gray-800 p-4 rounded-2xl"><h3 className="text-xl">Other Data</h3><div className="flex gap-4 flex-wrap"><button onClick={()=>clearAdminData('subs')} className="bg-red-800 px-3 py-1 rounded text-sm">Clear Subscriptions</button><button onClick={()=>clearAdminData('requests')} className="bg-red-800 px-3 py-1 rounded text-sm">Clear Data Requests</button><button onClick={()=>clearAdminData('contacts')} className="bg-red-800 px-3 py-1 rounded text-sm">Clear Contacts</button><button onClick={()=>clearAdminData('gallery')} className="bg-red-800 px-3 py-1 rounded text-sm">Clear Gallery</button></div></div>
+          </motion.div>
+        )}
+
+        {/* My Data (for logged-in requesters) */}
+        {userLoggedIn && activeTab === 'myData' && (
+          <motion.div className="bg-gray-800/40 rounded-2xl p-6">
+            <h2 className="text-2xl font-bold">Your Data Access</h2>
+            <p><strong>Name:</strong> {userLoggedIn.name}</p>
+            <p><strong>Assigned Mine:</strong> {userLoggedIn.mine}</p>
+            <p><strong>Access expires:</strong> {new Date(userLoggedIn.expiry).toLocaleString()}</p>
+            <div className="mt-6"><h3 className="text-xl">Current Risk Report</h3><p className="text-gray-300">Collapse risk: <span className="text-red-400 font-bold">{riskPercent}%</span> (based on latest EO data)</p><p className="text-sm">InSAR: {insarValue} mm/day | Vibration: {vibrationValue} g | Rainfall: {rainfallValue} mm/h</p></div>
+            <div className="mt-6"><h3 className="text-xl">Gallery for your mine</h3><div className="grid md:grid-cols-2 gap-4">{galleryImages.filter(img=>img.mine===userLoggedIn.mine).slice(0,4).map(img=><div key={img.id} className="bg-gray-800 rounded"><img src={img.url} className="h-40 w-full object-cover" /><p className="p-1 text-xs">{img.caption}</p></div>)}</div></div>
           </motion.div>
         )}
       </div>
