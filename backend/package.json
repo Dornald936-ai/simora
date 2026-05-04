@@ -1,22 +1,17 @@
-{
-  "name": "backend",
+﻿{
+  "name": "simora-backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Simora backend with JSON file storage",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "axios": "^1.16.0",
-    "bcrypt": "^6.0.0",
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "jsonwebtoken": "^9.0.3",
-    "sqlite3": "^6.0.1"
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "axios": "^1.6.0",
+    "dotenv": "^16.0.3",
+    "bcrypt": "^5.1.0",
+    "jsonwebtoken": "^9.0.0"
   }
 }
