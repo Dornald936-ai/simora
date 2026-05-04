@@ -10,7 +10,7 @@ app.use(express.json());
 
 const SECRET = process.env.JWT_SECRET || 'simora_secret_2026';
 
-// ---------- In‑memory data store ----------
+// ---------- In-memory data store ----------
 let data = {
   users: [],
   subscriptions: [],
@@ -21,14 +21,13 @@ let data = {
   nextId: { user:1, sub:1, contact:1, req:1, gallery:1, inst:1 }
 };
 
-// Helper to get next ID
 function nextId(collection) {
   const id = data.nextId[collection];
   data.nextId[collection] = id + 1;
   return id;
 }
 
-// Initialize default admin
+// Initialize admin
 (async () => {
   if (!data.users.find(u => u.email === 'admin@simora.com')) {
     const hashed = await bcrypt.hash('admin123', 10);
@@ -40,10 +39,10 @@ function nextId(collection) {
       role: 'admin',
       created_at: new Date().toISOString()
     });
+    console.log('Admin created');
   }
 })();
 
-// Middleware
 const verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: 'No token' });
@@ -57,7 +56,7 @@ const verifyToken = (req, res, next) => {
   }
 };
 
-// ---------- Auth ----------
+// Auth
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
   const user = data.users.find(u => u.email === email);
@@ -68,7 +67,7 @@ app.post('/api/login', async (req, res) => {
   res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, expiry: user.expiry, mine: user.mine } });
 });
 
-// ---------- Subscriptions ----------
+// Subscriptions
 app.post('/api/subscriptions', verifyToken, (req, res) => {
   const { name, email, tier } = req.body;
   if (!email) return res.status(400).json({ error: 'Email required' });
@@ -79,7 +78,7 @@ app.get('/api/subscriptions', verifyToken, (req, res) => {
   res.json([...data.subscriptions].reverse());
 });
 
-// ---------- Contacts ----------
+// Contacts
 app.post('/api/contacts', (req, res) => {
   const { name, email, message } = req.body;
   data.contacts.push({ id: nextId('contact'), name, email, message, date: new Date().toISOString() });
@@ -89,7 +88,7 @@ app.get('/api/contacts', verifyToken, (req, res) => {
   res.json([...data.contacts].reverse());
 });
 
-// ---------- Data Requests ----------
+// Data Requests
 app.post('/api/data-requests', (req, res) => {
   const { name, mine, location, dataNeeded } = req.body;
   data.dataRequests.push({ id: nextId('req'), name, mine, location, dataNeeded, date: new Date().toISOString(), approved: false });
@@ -101,9 +100,9 @@ app.get('/api/data-requests', verifyToken, (req, res) => {
 app.put('/api/data-requests/:id/approve', verifyToken, async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
   const id = parseInt(req.params.id);
-  const reqIndex = data.dataRequests.findIndex(r => r.id === id);
-  if (reqIndex === -1) return res.status(404).json({ error: 'Not found' });
-  const reqRecord = data.dataRequests[reqIndex];
+  const index = data.dataRequests.findIndex(r => r.id === id);
+  if (index === -1) return res.status(404).json({ error: 'Not found' });
+  const reqRecord = data.dataRequests[index];
   if (reqRecord.approved) return res.status(400).json({ error: 'Already approved' });
   const expiry = new Date();
   expiry.setDate(expiry.getDate() + (req.body.days || 7));
@@ -120,11 +119,11 @@ app.put('/api/data-requests/:id/approve', verifyToken, async (req, res) => {
     role: 'requester',
     created_at: new Date().toISOString()
   });
-  data.dataRequests[reqIndex].approved = true;
+  data.dataRequests[index].approved = true;
   res.json({ success: true, email: `user_${Date.now()}@simora.com`, password });
 });
 
-// ---------- Gallery ----------
+// Gallery
 app.get('/api/gallery', (req, res) => {
   res.json([...data.gallery].reverse());
 });
@@ -135,7 +134,7 @@ app.post('/api/gallery', verifyToken, (req, res) => {
   res.json({ success: true });
 });
 
-// ---------- Institutional Subscriptions ----------
+// Institutional Subscriptions
 app.post('/api/inst-subscriptions', (req, res) => {
   const { institution, contactName, email } = req.body;
   data.institutionSubs.push({ id: nextId('inst'), institution, contactName, email, date: new Date().toISOString() });
@@ -145,14 +144,14 @@ app.get('/api/inst-subscriptions', verifyToken, (req, res) => {
   res.json([...data.institutionSubs].reverse());
 });
 
-// ---------- Users list ----------
+// Users
 app.get('/api/users', verifyToken, (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
   const users = data.users.map(u => ({ id: u.id, name: u.name, email: u.email, mine: u.mine, expiry: u.expiry, role: u.role }));
   res.json(users);
 });
 
-// ---------- Admin clear data ----------
+// Admin clear
 app.delete('/api/admin/clear/:type', verifyToken, (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
   const type = req.params.type;
@@ -162,13 +161,13 @@ app.delete('/api/admin/clear/:type', verifyToken, (req, res) => {
     case 'contacts': data.contacts = []; break;
     case 'gallery': data.gallery = []; break;
     case 'inst': data.institutionSubs = []; break;
-    case 'users': data.users = data.users.filter(u => u.role === 'admin'); break; // keep admin
+    case 'users': data.users = data.users.filter(u => u.role === 'admin'); break;
     default: return res.status(400).json({ error: 'Invalid type' });
   }
   res.json({ success: true });
 });
 
-// ---------- InSAR endpoint (simulated) ----------
+// InSAR
 app.get('/api/insar/:lat/:lon', (req, res) => {
   const simulated = 1.5 + Math.random() * 4.5;
   res.json({
@@ -178,6 +177,10 @@ app.get('/api/insar/:lat/:lon', (req, res) => {
   });
 });
 
-// Start server
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime() });
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
